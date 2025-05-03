@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:17
+    container_name: n8n-DB
+    hostname: n8n-db
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "${DB_POSTGRESDB_DATABASE}", "-U", "${DB_POSTGRESDB_USER}"]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    volumes:
+      - ./n8n_db:/var/lib/postgresql/data:rw
+    environment:
+      TZ: ${GENERIC_TIMEZONE}
+      POSTGRES_DB: ${DB_POSTGRESDB_DATABASE}
+      POSTGRES_USER: ${DB_POSTGRESDB_USER}
+      POSTGRES_PASSWORD: ${DB_POSTGRESDB_PASSWORD}
+    restart: on-failure:5
+    networks:
+      - shared_network
+
+  n8n:
+    image: n8nio/n8n:latest # :latest последняя версия // :stable стабильная версия // :beta версия в разработке
+    container_name: n8n
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 5678 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    hostname: n8n
+    user: 0:0 # нужно для устранения проблем внутри контейнера
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - 6789:5678 # порты можно переназначать слева порт сервера через него выходим в сеть, справа порт контейнера. Меняем только порт сервера до двоиточия --> 6789:5678 <--этот не трогаем (пример: - 1231:5678)
+    volumes:
+      - ./n8n_node_modules:/user/local/lib/node_modules:rw
+      - ./n8n_data:/home/node/.n8n:rw
+      # рабочии папки Слева то что лежит на сервере, справа то что будет размещено в контейнере
+      - ./n8n_files:/files:rw
+      - ./project_photos:/data/photos:rw
+      - ./project_files:/data/files:rw
+      - ./project_db:/data/db:rw
+    environment:
+      N8N_HOST: ${N8N_HOST}
+      WEBHOOK_URL: ${WEBHOOK_URL}
+      N8N_PORT: ${N8N_PORT}
+      N8N_PROTOCOL: ${N8N_PROTOCOL}
+      NODE_ENV: ${NODE_ENV}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+      N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: ${N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS}
+      N8N_SECURE_COOKIE: ${N8N_SECURE_COOKIE}
+      TZ: ${TZ}
+      DB_TYPE: ${DB_TYPE}
+      DB_POSTGRESDB_DATABASE: ${DB_POSTGRESDB_DATABASE}
+      DB_POSTGRESDB_HOST: ${DB_POSTGRESDB_HOST}
+      DB_POSTGRESDB_PORT: ${DB_POSTGRESDB_PORT}
+      DB_POSTGRESDB_USER: ${DB_POSTGRESDB_USER}
+      DB_POSTGRESDB_PASSWORD: ${DB_POSTGRESDB_PASSWORD}
+    restart: on-failure:5
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    name: shared_network
+    driver: bridge
